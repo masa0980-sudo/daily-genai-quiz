@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>デイリー 生成AIクイズ</title>
+<style>
+  :root{
+    --bg0:#120b06; --bg1:#2a1508;
+    --accent:#ff9a4d; --accent2:#ffd166;
+    --ok:#3fa96b; --ng:#d8483f;
+    --line:rgba(255,255,255,.16);
+    --text:#f6efe8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    background:radial-gradient(120% 120% at 50% 0%,var(--bg1),var(--bg0) 72%);
+    color:var(--text);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",sans-serif;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+  }
+  #stage{position:relative;width:min(100vw,480px);height:min(100vh,880px);overflow:hidden;}
+
+  /* ===== タイトル画面 ===== */
+  #title{
+    position:absolute;inset:0;z-index:30;padding:24px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  }
+  /* キーアート画像・イントロ動画の置き場所（無ければ自動で隠れる） */
+  #keyartLayer{position:absolute;inset:0;z-index:0;overflow:hidden;}
+  #keyart,#intro{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;}
+  #titleScrim{position:absolute;inset:0;z-index:1;
+    background:radial-gradient(110% 90% at 50% 35%,rgba(18,11,6,.35),rgba(18,11,6,.9) 78%);}
+  #titleInner{position:relative;z-index:2;}
+  h1{
+    font-size:clamp(24px,6.6vw,34px);font-weight:900;letter-spacing:.03em;line-height:1.35;
+    background:linear-gradient(90deg,var(--accent2),var(--accent));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 16px rgba(255,154,77,.45));
+  }
+  .sub{margin-top:10px;font-size:12px;letter-spacing:.3em;color:var(--accent);opacity:.9;}
+  .rule{
+    margin:22px auto 0;max-width:340px;padding:16px 18px;border-radius:14px;
+    background:rgba(30,18,10,.66);border:1px solid var(--line);
+    font-size:13px;line-height:1.95;text-align:left;
+  }
+  .btn{
+    margin-top:24px;cursor:pointer;user-select:none;border:none;
+    padding:15px 46px;font-size:18px;font-weight:800;letter-spacing:.14em;
+    color:#241202;border-radius:40px;
+    background:linear-gradient(90deg,var(--accent2),var(--accent));
+    box-shadow:0 0 26px rgba(255,154,77,.45);
+    transition:transform .12s,box-shadow .2s;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 0 40px rgba(255,209,102,.55);}
+  .btn:active{transform:scale(.97);}
+  .btn.ghost{background:none;color:var(--text);border:1px solid var(--line);
+    box-shadow:none;font-size:14px;padding:11px 26px;letter-spacing:.08em;}
+  .btn.ghost:hover{background:rgba(255,255,255,.07);transform:none;box-shadow:none;}
+  #skipIntro{position:absolute;right:14px;bottom:14px;z-index:3;display:none;font-size:12px;padding:8px 16px;}
+
+  /* ===== クイズ画面 ===== */
+  #quiz{display:none;flex-direction:column;height:100%;padding:16px 16px 20px;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 14px;}
+  .logo{font-size:14px;font-weight:800;letter-spacing:.1em;color:var(--accent);}
+  .day{font-size:11px;opacity:.7;}
+  #progress{display:flex;gap:6px;margin-bottom:16px;}
+  .pip{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.14);}
+  .pip.ok{background:var(--ok);} .pip.ng{background:var(--ng);}
+  #qno{font-size:12px;letter-spacing:.18em;color:var(--accent);margin-bottom:8px;}
+  #question{font-size:19px;font-weight:800;line-height:1.65;margin-bottom:22px;}
+  #choices{display:flex;flex-direction:column;gap:10px;}
+  .choice{
+    display:flex;gap:12px;align-items:flex-start;text-align:left;cursor:pointer;
+    padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.55;
+    background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--text);
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .choice:hover{background:rgba(255,255,255,.12);}
+  .choice:active{transform:scale(.99);}
+  .choice .mark{font-weight:900;color:var(--accent);min-width:1.2em;}
+  .choice.ok{background:rgba(63,169,107,.28);border-color:var(--ok);}
+  .choice.ng{background:rgba(216,72,63,.25);border-color:var(--ng);}
+  .choice.dim{opacity:.45;}
+  .choice[disabled]{cursor:default;}
+  #explain{
+    margin-top:18px;padding:14px 16px;border-radius:12px;font-size:13.5px;line-height:1.8;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);display:none;
+  }
+  #explain b{color:var(--accent2);}
+  #nextBtn{display:none;margin:18px auto 0;}
+
+  /* ===== 結果 ===== */
+  #result{position:absolute;inset:0;z-index:40;display:none;
+    align-items:center;justify-content:center;padding:22px;
+    background:rgba(10,6,3,.88);backdrop-filter:blur(3px);}
+  .card{width:100%;max-width:340px;padding:26px 22px;border-radius:18px;text-align:center;
+    background:rgba(36,22,12,.97);border:1px solid var(--line);box-shadow:0 20px 60px rgba(0,0,0,.55);}
+  .card h2{font-size:24px;letter-spacing:.06em;margin-bottom:4px;}
+  .score{font-size:15px;margin:8px 0 4px;opacity:.9;}
+  .score b{font-size:30px;color:var(--accent2);}
+  #shareHead{font-size:13px;line-height:1.7;opacity:.85;margin-top:14px;
+    white-space:normal;overflow-wrap:anywhere;}
+  #shareGrid{font-size:26px;line-height:1.3;letter-spacing:.08em;margin:6px 0 18px;
+    white-space:normal;overflow-wrap:anywhere;
+    font-family:"Segoe UI Emoji","Apple Color Emoji",sans-serif;}
+  #shareNote{font-size:12px;line-height:1.7;opacity:.8;margin-bottom:16px;
+    white-space:pre-line;overflow-wrap:anywhere;}
+  .next{font-size:12px;opacity:.7;margin-top:14px;line-height:1.75;}
+
+  /* ===== ふりかえり（回答の見返し） ===== */
+  #review{position:absolute;inset:0;z-index:50;display:none;flex-direction:column;
+    background:var(--bg0);}
+  #reviewHead{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 16px 12px;border-bottom:1px solid var(--line);}
+  #reviewHead .logo{font-size:15px;}
+  #reviewBody{flex:1;overflow-y:auto;padding:16px 16px 28px;-webkit-overflow-scrolling:touch;}
+  .rvDay{font-size:13px;font-weight:800;color:var(--accent);letter-spacing:.06em;
+    margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+  .rvDay:first-child{margin-top:0;}
+  .rvItem{padding:14px 15px;border-radius:12px;margin-bottom:10px;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);}
+  .rvTag{font-size:11px;letter-spacing:.08em;color:var(--accent2);opacity:.9;}
+  .rvQ{font-size:14.5px;font-weight:800;line-height:1.6;margin:5px 0 10px;}
+  .rvLine{font-size:13px;line-height:1.75;}
+  .rvLine .lbl{display:inline-block;min-width:6.5em;margin-right:6px;opacity:.65;}
+  .rvOk{color:#7ddba4;} .rvNg{color:#ff9a92;}
+  .rvE{font-size:12.5px;line-height:1.75;margin-top:8px;padding-top:8px;
+    border-top:1px dashed var(--line);opacity:.9;}
+  .rvE b{color:var(--accent2);}
+  .rvEmpty{font-size:13px;line-height:1.9;opacity:.8;text-align:center;margin-top:40px;}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ===== タイトル ===== -->
+  <div id="title">
+    <!-- ▼ 背景素材。art/keyart.png（キーアート画像）と art/intro.mp4（イントロ動画）を置くだけで反映されます。
+         ファイルが無いときは JS が自動で隠すので、無くてもそのまま動きます。 -->
+    <div id="keyartLayer">
+      <img id="keyart" src="art/keyart.png" alt="">
+      <video id="intro" src="art/intro.mp4" muted loop playsinline preload="auto"></video>
+    </div>
+    <div id="titleScrim"></div>
+
+    <div id="titleInner">
+      <h1>デイリー<br>生成AIクイズ</h1>
+      <div class="sub">1 日 3 問 の 4 択</div>
+      <div class="rule">
+        生成AIの基本知識を、毎日3問の4択で出題します。<br>
+        答えるとその場で正解と解説が出ます。<br>
+        3問終わると結果が絵文字で出て、コピーしてSNSに貼れます。<br>
+        問題は毎日0時に切りかわります。
+      </div>
+      <button class="btn" id="startBtn">スタート</button><br>
+      <button class="btn ghost" id="historyBtn" style="margin-top:12px;">これまでの記録を見る</button>
+    </div>
+    <button class="btn ghost" id="skipIntro">動画をスキップ</button>
+  </div>
+
+  <!-- ===== クイズ ===== -->
+  <div id="quiz">
+    <header>
+      <div class="logo">生成AIクイズ</div>
+      <div class="day" id="dayLabel"></div>
+    </header>
+    <div id="progress"></div>
+    <div id="qno"></div>
+    <div id="question"></div>
+    <div id="choices"></div>
+    <div id="explain"></div>
+    <button class="btn" id="nextBtn">つぎへ</button>
+  </div>
+
+  <!-- ===== 結果 ===== -->
+  <div id="result">
+    <div class="card">
+      <h2 id="resultTitle"></h2>
+      <div class="score"><b id="scoreText"></b> / 3 問 正解</div>
+      <div id="shareHead"></div>
+      <div id="shareGrid"></div>
+      <div id="shareNote"></div>
+      <button class="btn" id="copyBtn">結果をコピー</button>
+      <button class="btn ghost" id="reviewBtn" style="margin-top:10px;">答えを見返す</button>
+      <button class="btn ghost" id="closeBtn" style="margin-top:8px;">とじる</button>
+      <div class="next">次の問題は明日の0時に出ます。<br>コピーした結果はSNSにそのまま貼れます。</div>
+    </div>
+  </div>
+
+  <!-- ===== ふりかえり ===== -->
+  <div id="review">
+    <div id="reviewHead">
+      <div class="logo">こたえの見返し</div>
+      <button class="btn ghost" id="reviewClose" style="margin-top:0;padding:8px 18px;">もどる</button>
+    </div>
+    <div id="reviewBody"></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =========================================================
+     1. 問題データ（生成AIの基本知識）
+        a: 正解の番号（0〜3）
+     ========================================================= */
+  const QUIZ = [
+    {t:"サービスの違い",
+     q:"対話型AIサービスと開発元の組み合わせで正しいのは？",
+     c:["ChatGPT は OpenAI、Claude は Anthropic、Gemini は Google","3つとも同じ会社が開発している","ChatGPT は Google、Gemini は OpenAI","Claude は Meta が開発している"],a:0,
+     e:"ChatGPT＝<b>OpenAI</b>、Claude＝<b>Anthropic</b>、Gemini＝<b>Google</b> です。"},
+
+    {t:"サービスの違い",
+     q:"Claude を開発している会社は？",
+     c:["OpenAI","Anthropic","Google","Microsoft"],a:1,
+     e:"<b>Anthropic</b>。Claude Code も同社の製品です。"},
+
+    {t:"サービスの違い",
+     q:"Gemini を提供している会社は？",
+     c:["Google","Amazon","Apple","IBM"],a:0,
+     e:"<b>Google</b>。検索やドキュメントなど自社サービスとの連携が特徴です。"},
+
+    {t:"サービスの違い",
+     q:"同じ質問でもサービスやモデルによって答えが変わるのは？",
+     c:["故障している","仕組み上ふつうに起きること","設定ミス","通信エラー"],a:1,
+     e:"学習内容も生成の仕方も違うため、答えは変わります。比べて使うのが有効です。"},
+
+    {t:"サービスの違い",
+     q:"多くのAIサービスで、無料版と有料版の主な違いは？",
+     c:["使えるモデルや利用量の上限","文字の色","保存できる写真の枚数","通信速度だけ"],a:0,
+     e:"高性能モデルや多い利用枠が有料側に置かれるのが一般的です。"},
+
+    {t:"サービスの違い",
+     q:"どのAIを使うか選ぶときの現実的な基準は？",
+     c:["自分の用途で実際に試して比べる","評判が一番いいものを選ぶ","一番新しいものを必ず選ぶ","一番安いものを必ず選ぶ"],a:0,
+     e:"得意分野は用途で変わります。自分の仕事で試すのが確実です。"},
+
+    {t:"サービスの違い",
+     q:"同じ質問を1つのAIに2回して、答えが少し違ったときの理解は？",
+     c:["確率的に生成しているので起こりうる","毎回同じでないとおかしい","アカウントの不具合","課金されていない証拠"],a:0,
+     e:"言葉を確率的に選ぶため、同じ入力でも文章は揺れます。"},
+
+    {t:"サービスの違い",
+     q:"複数のAIを併用する利点は？",
+     c:["回答を見比べて誤りに気づきやすい","料金が安くなる","通信が速くなる","保存容量が増える"],a:0,
+     e:"別のAIの答えと突き合わせると、思い込みや誤りに気づきやすくなります。"},
+
+    {t:"プロンプト",
+     q:"指示を出すときに効果的なのは？",
+     c:["目的・条件・出力形式を具体的に書く","なるべく短く曖昧に書く","専門用語だけ並べる","丁寧語を増やす"],a:0,
+     e:"何のために・どんな制約で・どんな形で欲しいかが揃うと精度が上がります。"},
+
+    {t:"プロンプト",
+     q:"「いい感じにして」とだけ頼むとどうなりやすい？",
+     c:["期待とずれた結果になりやすい","必ず最高の結果になる","エラーで止まる","料金が上がる"],a:0,
+     e:"判断基準が伝わらないため、方向がずれます。良し悪しの基準を書きましょう。"},
+
+    {t:"プロンプト",
+     q:"出力の形を指定する書き方はどれ？",
+     c:["表形式で、箇条書き5個で、300字以内で","できるだけ良い感じで","普通に書いて","おまかせで"],a:0,
+     e:"形式を指定すると、そのまま使える形で返ってきます。"},
+
+    {t:"プロンプト",
+     q:"「あなたは校正者です」のように役割を与えると？",
+     c:["見るべき観点が定まり回答が安定する","料金が下がる","応答が速くなる","文字数が必ず増える"],a:0,
+     e:"役割を決めると視点が絞られ、指摘の質が揃います。"},
+
+    {t:"プロンプト",
+     q:"大きな作業を頼むときのコツは？",
+     c:["手順を分けて段階的に頼む","一度に全部まとめて頼む","結果を見ずに任せる","何度も同じ文を送る"],a:0,
+     e:"区切って確認すると、ずれたときの戻りが小さくなります。"},
+
+    {t:"プロンプト",
+     q:"お手本を1〜2個見せてから頼むやり方を何という？",
+     c:["少数例提示（Few-shot）","バッチ処理","キャッシュ","チューニング"],a:0,
+     e:"<b>Few-shot</b>。望む形の例を見せると、出力がその形に寄ります。"},
+
+    {t:"プロンプト",
+     q:"期待と違う回答が来たときの最短の対処は？",
+     c:["どこがどう違うかを具体的に伝えて直してもらう","最初からやり直す","同じ文をもう一度送る","あきらめる"],a:0,
+     e:"差分を具体的に伝えるほど、少ない往復で近づきます。"},
+
+    {t:"プロンプト",
+     q:"文章を書かせるとき、読者層を伝えると？",
+     c:["語彙や説明の深さが合う","文字数が必ず減る","料金が下がる","速度が上がる"],a:0,
+     e:"「初心者向け」「経営者向け」などで、書きぶりが変わります。"},
+
+    {t:"プロンプト",
+     q:"やってほしくないことがあるときは？",
+     c:["禁止事項として明確に書く","書かずに察してもらう","毎回やり直す","短く書く"],a:0,
+     e:"「専門用語を使わない」など、避けたいことも指示に含めます。"},
+
+    {t:"プロンプト",
+     q:"情報の正しさが重要なときの頼み方は？",
+     c:["出典を示すよう指示し、自分でも確認する","丁寧にお願いする","長文で頼む","何度も聞き直す"],a:0,
+     e:"出典を出させたうえで、リンク先を自分で確認するのが確実です。"},
+
+    {t:"プロンプト",
+     q:"長い文章を要約させるときに効くのは？",
+     c:["誰向けに何字で、という用途を伝える","とにかく短くと頼む","そのまま貼るだけ","毎回別のAIに聞く"],a:0,
+     e:"用途が分かると、残すべき情報の取捨選択が変わります。"},
+
+    {t:"プロンプト",
+     q:"同じ指示を毎回書くのが面倒なときは？",
+     c:["定型文として保存して使い回す","毎回思い出して打つ","短く省略する","頼むのをやめる"],a:0,
+     e:"よく使う指示はテンプレート化すると、品質も揃います。"},
+
+    {t:"ハルシネーション",
+     q:"ハルシネーションとは？",
+     c:["もっともらしい誤りを生成してしまうこと","通信が切れること","文字化けすること","応答が遅いこと"],a:0,
+     e:"事実でないことを自然な文章で書いてしまう現象です。"},
+
+    {t:"ハルシネーション",
+     q:"実在しない論文名やURLが出てくることがあるのはなぜ？",
+     c:["それらしい形の文字列を作ってしまうため","わざと嘘をつくため","通信エラーのため","課金していないため"],a:0,
+     e:"「ありそうな形」を生成するため、存在しない出典が作られることがあります。"},
+
+    {t:"ハルシネーション",
+     q:"数字や固有名詞を扱うときの正しい姿勢は？",
+     c:["必ず一次情報で確認する","AIの答えを信じる","気にしない","他のAIにだけ聞く"],a:0,
+     e:"公式サイトなど元の情報にあたるのが確実です。"},
+
+    {t:"ハルシネーション",
+     q:"AIが自信ありげに断言している内容は？",
+     c:["正しいとは限らない","必ず正しい","必ず間違い","確認不要"],a:0,
+     e:"口調の強さと正しさは関係ありません。"},
+
+    {t:"ハルシネーション",
+     q:"誤りを減らす頼み方として有効なのは？",
+     c:["根拠や出典を示させる","長い文章で頼む","丁寧語で頼む","何度も聞く"],a:0,
+     e:"根拠を書かせると、あやしい箇所が見つけやすくなります。"},
+
+    {t:"ハルシネーション",
+     q:"ごく最近の出来事について聞くと？",
+     c:["学習時点以降は知らないことがある","必ず最新情報を答える","エラーになる","課金される"],a:0,
+     e:"知識には締め切り（カットオフ）があります。検索機能の有無も確認しましょう。"},
+
+    {t:"ハルシネーション",
+     q:"ファクトチェックで最も信頼できるのは？",
+     c:["公式サイトなどの一次情報","まとめサイト","SNSの投稿","別のAIの回答"],a:0,
+     e:"一次情報にあたるのが基本。AI同士の照合は補助にすぎません。"},
+
+    {t:"ハルシネーション",
+     q:"AIの回答をそのまま公開するのは？",
+     c:["危険。必ず人が確認する","問題ない","速いので推奨","AIが責任を持つ"],a:0,
+     e:"公開物の責任は出した人にあります。事実確認は人の仕事です。"},
+
+    {t:"機密情報",
+     q:"会社の機密資料をAIに貼って要約させたいときは？",
+     c:["まず会社のAI利用ルールを確認する","気にせず貼る","一部だけ貼れば安全","急ぎなら貼ってよい"],a:0,
+     e:"扱いは契約や設定で変わります。組織のルール確認が先です。"},
+
+    {t:"機密情報",
+     q:"顧客の個人情報を入力するのは？",
+     c:["原則避ける","問題ない","名前だけなら安全","メールなら安全"],a:0,
+     e:"氏名・連絡先・購買履歴などは、伏せるか匿名化してから扱います。"},
+
+    {t:"機密情報",
+     q:"パスワードやAPIキーをチャットに貼るのは？",
+     c:["絶対に避ける","短ければ安全","すぐ消せば安全","問題ない"],a:0,
+     e:"漏れると悪用されます。誤って貼ったら速やかに無効化・再発行します。"},
+
+    {t:"機密情報",
+     q:"業務でAIを使い始めるとき、最初に確認すべきものは？",
+     c:["会社のAI利用ルール","流行のプロンプト集","有料プランの価格","AIの開発元"],a:0,
+     e:"使ってよい範囲を確認してから始めるのが安全です。"},
+
+    {t:"機密情報",
+     q:"入力した内容がどう扱われるかは？",
+     c:["サービスや設定で異なるので規約を確認する","どこも同じ","必ず学習に使われる","絶対に使われない"],a:0,
+     e:"法人向けプランや設定で扱いが変わります。規約とプライバシーポリシーを読みます。"},
+
+    {t:"機密情報",
+     q:"社外秘の資料を扱うときの安全な進め方は？",
+     c:["会社が許可した環境を使い、機密部分は伏せる","個人アカウントで使う","そのまま貼る","家で作業する"],a:0,
+     e:"許可された環境と、必要最小限の情報だけ、が原則です。"},
+
+    {t:"機密情報",
+     q:"スクリーンショットを渡すときの注意は？",
+     c:["写り込んだ個人情報や社名を消す","そのまま渡す","解像度を下げれば安全","拡張子を変える"],a:0,
+     e:"通知や別タブに情報が写り込みがちです。渡す前に確認します。"},
+
+    {t:"機密情報",
+     q:"入力してよいか迷ったときの判断基準は？",
+     c:["公開されても困らない情報かどうか","急いでいるかどうか","分量が多いかどうか","日本語かどうか"],a:0,
+     e:"迷う時点で危ういサインです。伏せる・要約する・許可を取る、で回避します。"},
+
+    {t:"著作権",
+     q:"生成物を商用利用したいときは？",
+     c:["利用規約と権利関係を確認する","自由に使ってよい","出典を書けば必ず自由","AIが許可してくれる"],a:0,
+     e:"サービスごとに条件が違います。使う前に規約を確認します。"},
+
+    {t:"著作権",
+     q:"実在の人物そっくりの画像を作って公開するのは？",
+     c:["肖像権などの問題が生じうる","まったく問題ない","本人に似ていれば良い","AI生成なら自由"],a:0,
+     e:"本人の権利に関わります。実在人物を模した生成は避けるのが無難です。"},
+
+    {t:"著作権",
+     q:"有名キャラクターに似せた画像を作るのは？",
+     c:["権利侵害のおそれがある","問題ない","名前を出さなければ自由","個人利用なら常に自由"],a:0,
+     e:"作風や特徴を模倣すると権利上の問題になりえます。オリジナルで作ります。"},
+
+    {t:"著作権",
+     q:"他人の文章をほぼそのまま出力させて公開するのは？",
+     c:["著作権侵害になりうる","AI経由なら問題ない","短ければ自由","翻訳すれば自由"],a:0,
+     e:"経路がAIでも、他人の表現をそのまま使えば問題になります。"},
+
+    {t:"著作権",
+     q:"AIが作った成果物の権利の扱いは？",
+     c:["国やサービスによって異なるため確認が必要","世界共通で決まっている","必ず利用者のもの","必ず開発元のもの"],a:0,
+     e:"制度は整備の途中です。重要な用途では規約と最新の状況を確認します。"},
+
+    {t:"著作権",
+     q:"他人の文章を引用するときの基本は？",
+     c:["出典を示し、必要最小限にとどめる","好きなだけ使ってよい","出典を書けば全文使える","書き換えれば自由"],a:0,
+     e:"主従関係（自分の文が主）と出典明示が基本です。"},
+
+    {t:"著作権",
+     q:"既存企業のロゴに似た画像を作るのは？",
+     c:["商標の問題が生じうる","色を変えれば自由","小さければ自由","AI生成なら自由"],a:0,
+     e:"見分けがつかないほど似ていると問題になります。生成時も除外指定しておきます。"},
+
+    {t:"著作権",
+     q:"権利関係で迷ったときは？",
+     c:["公開前に規約を読み、必要なら専門家に相談する","とりあえず公開する","SNSで聞く","AIに判断させる"],a:0,
+     e:"AIの回答は参考情報です。最終判断は規約と専門家の確認によります。"},
+
+    {t:"AIの仕組み",
+     q:"大規模言語モデル（LLM）が文章を作るとき、していることは？",
+     c:["次に来る言葉を確率的に選んでいる","辞書から丸ごと引いている","人が下書きしている","検索結果を貼っている"],a:0,
+     e:"膨大な文章から学んだ傾向をもとに、続きを予測して並べています。"},
+
+    {t:"AIの仕組み",
+     q:"トークンとは？",
+     c:["文章を細かく区切った単位","通信の暗号","課金用のポイント","保存領域"],a:0,
+     e:"だいたい単語や文字のかたまり。料金や上限の計算にも使われます。"},
+
+    {t:"AIの仕組み",
+     q:"コンテキスト（文脈）とは？",
+     c:["一度に扱える会話や資料の範囲","画面の解像度","保存できるファイル数","通信の速さ"],a:0,
+     e:"ここに収まる情報をもとに答えます。長くなると古い部分は扱えなくなります。"},
+
+    {t:"AIの仕組み",
+     q:"知識カットオフとは？",
+     c:["学習データの締め切り時点","利用の上限","解約の期限","応答の制限時間"],a:0,
+     e:"その時点より後の出来事は、検索機能などがない限り知りません。"},
+
+    {t:"AIの仕組み",
+     q:"「学習」と「推論」の違いとして正しいのは？",
+     c:["学習はモデルを作る工程、推論は使う工程","同じ意味","推論のほうが先","学習は利用者が行う"],a:0,
+     e:"ふだん私たちが使っているのは<b>推論</b>のほうです。"},
+
+    {t:"AIの仕組み",
+     q:"会話が長くなりすぎると起きやすいことは？",
+     c:["古い内容が扱いきれず、指示が薄れる","料金が無料になる","速度が上がる","精度が必ず上がる"],a:0,
+     e:"要点を再提示するか、新しい会話に分けると安定します。"},
+
+    {t:"AIの仕組み",
+     q:"AIが単純な計算を間違えることがあるのはなぜ？",
+     c:["言葉として処理しているため","電卓が入っていないから故障","通信の問題","わざと間違える"],a:0,
+     e:"正確さが必要なら、計算やコード実行の機能を使わせるのが確実です。"},
+
+    {t:"AIの仕組み",
+     q:"マルチモーダルとは？",
+     c:["文字だけでなく画像や音声も扱えること","複数人で使うこと","複数の会社が作ること","複数言語に対応すること"],a:0,
+     e:"画像を見せて質問する、といった使い方ができます。"},
+
+    {t:"AIの仕組み",
+     q:"AIは人間のように意味を理解している？",
+     c:["統計的に尤もらしい出力を作っている","人と同じように理解している","感情を持っている","記憶が永続する"],a:0,
+     e:"仕組みは確率的な予測です。だからこそ確認が要ります。"},
+
+    {t:"AIの仕組み",
+     q:"AIに前回の会話を覚えていてほしいときは？",
+     c:["必要な前提を渡すか、記憶機能を使う","黙っていても覚えている","毎回同じAIを選ぶ","課金すれば自動で覚える"],a:0,
+     e:"会話をまたぐ記憶は仕組み次第です。前提は明示的に渡すのが確実です。"},
+
+    {t:"画像生成",
+     q:"画像生成AIが苦手なことで、よく知られているのは？",
+     c:["画像内の文字がくずれる","色を塗ること","構図を作ること","背景を描くこと"],a:0,
+     e:"文字は崩れやすいので、ロゴやタイトルは後からデザインで載せます。"},
+
+    {t:"画像生成",
+     q:"背景が透明なPNGを出せないモデルの使いどころは？",
+     c:["全面が絵になる背景・キーアート","キャラの切り抜き素材","アイコン素材","ロゴの型抜き"],a:0,
+     e:"透過が出せないモデルは、四角い一枚絵の用途に向いています。"},
+
+    {t:"画像生成",
+     q:"画像に文字を入れたくないときにプロンプトへ書くのは？",
+     c:["no text / no letters","big text","with caption","add title"],a:0,
+     e:"指定しないと、意味のないニセ文字が描き込まれることがあります。"},
+
+    {t:"画像生成",
+     q:"画像の縦横比やサイズを決めるときは？",
+     c:["サービスが定める指定方法に従う","必ず正方形になる","あとから必ず自由に変えられる","指定できない"],a:0,
+     e:"プリセット名と数値指定で結果が変わることもあるので、実物のサイズを確認します。"},
+
+    {t:"画像生成",
+     q:"同じプロンプトでも毎回違う絵が出るのは？",
+     c:["ランダム性がある仕様","不具合","課金の問題","プロンプトのミス"],a:0,
+     e:"気に入った絵は保存しておかないと同じものは戻ってきません。"},
+
+    {t:"画像生成",
+     q:"人物画像でとくに不自然になりやすいのは？",
+     c:["手や指","空の色","建物の輪郭","地面"],a:0,
+     e:"手指は破綻しやすい部分です。使う前に拡大して確認します。"},
+
+    {t:"画像生成",
+     q:"実在ブランドのロゴを画像に入れない理由は？",
+     c:["商標や権利の問題になりうるから","描画が遅くなるから","料金が上がるから","解像度が落ちるから"],a:0,
+     e:"プロンプトで no logos と指定して避けます。"},
+
+    {t:"画像生成",
+     q:"思った絵にならないときの改善方法は？",
+     c:["画角・光・色・雰囲気など具体的な語を足す","同じ文をもう一度送る","短くする","別サービスに変える"],a:0,
+     e:"抽象的な形容詞より、具体的な描写語のほうが効きます。"},
+
+    {t:"音声・動画生成",
+     q:"動画生成AIが一度に作る映像の長さは、一般に？",
+     c:["数秒から十数秒が中心","必ず1時間以上","必ず10分","制限がない"],a:0,
+     e:"短いクリップをつなげて使うのが基本です。"},
+
+    {t:"音声・動画生成",
+     q:"動画生成の料金の考え方として一般的なのは？",
+     c:["秒数や解像度で変わる","毎回定額","無料","ファイル形式で決まる"],a:0,
+     e:"長く高解像度なほど高くなります。作る前に見積もるのが安全です。"},
+
+    {t:"音声・動画生成",
+     q:"生成した動画をWebページに置くときは？",
+     c:["圧縮して軽くする","そのまま置く","画質を最大にする","音を必ず付ける"],a:0,
+     e:"重いと再生が始まらず、静止画のように見えてしまいます。"},
+
+    {t:"音声・動画生成",
+     q:"音声合成で気をつけるべきことは？",
+     c:["実在の人物の声を無断で模倣しない","音量を上げすぎない","日本語しか使わない","短くする"],a:0,
+     e:"なりすましや権利侵害につながります。許諾のない声真似は避けます。"},
+
+    {t:"音声・動画生成",
+     q:"生成映像に読めない文字が写り込むのを防ぐには？",
+     c:["no text などを指定する","解像度を上げる","秒数を延ばす","音を消す"],a:0,
+     e:"指定しないと、看板や字幕のような偽の文字が生成されます。"},
+
+    {t:"AI用語",
+     q:"API とは？",
+     c:["プログラムから機能を呼び出すための窓口","画面の名前","課金プラン","保存形式"],a:0,
+     e:"自分のアプリや自動化から、AIの機能を呼び出せます。"},
+
+    {t:"AI用語",
+     q:"RAG とは？",
+     c:["外部の資料を検索して回答に使う仕組み","画像を作る技術","音声を作る技術","課金方式"],a:0,
+     e:"社内文書などを検索させると、根拠に基づいた回答が得やすくなります。"},
+
+    {t:"AI用語",
+     q:"ファインチューニングとは？",
+     c:["追加学習で特定の用途に寄せること","会話を短くすること","料金を下げること","画像を加工すること"],a:0,
+     e:"多くの用途では、まずプロンプトやRAGで足りるか検討します。"},
+
+    {t:"AI用語",
+     q:"AIエージェントとは？",
+     c:["目的に向けて手順を決め、道具を使って実行するAI","絵を描くAI","翻訳専用のAI","検索エンジン"],a:0,
+     e:"調べる・書く・実行するを自分で組み立てて進めます。"},
+
+    {t:"AI用語",
+     q:"MCP とは？",
+     c:["AIと外部ツールをつなぐための共通規格","動画の形式","課金の単位","暗号方式"],a:0,
+     e:"対応するサーバーを追加すると、AIが使える道具が増えます。"},
+
+    {t:"AI用語",
+     q:"プロンプトインジェクションとは？",
+     c:["外部の文章に紛れ込ませた指示でAIを誤動作させる攻撃","入力欄の不具合","課金の不正","通信の遮断"],a:0,
+     e:"Webページや資料の中の指示を、AIが命令と受け取ってしまう危険があります。"},
+
+    {t:"AI用語",
+     q:"温度（temperature）を上げるとどうなる？",
+     c:["出力のばらつきが大きくなる","応答が速くなる","料金が下がる","文字数が減る"],a:0,
+     e:"堅い正確さが欲しいときは下げ、発想を広げたいときは上げます。"},
+
+    {t:"AI用語",
+     q:"埋め込み（embedding）とは？",
+     c:["文章を数値のベクトルに変換したもの","画像を圧縮したもの","音声の波形","課金の記録"],a:0,
+     e:"意味の近さを計算でき、検索やRAGの土台になります。"},
+
+    {t:"AI用語",
+     q:"オープンウェイトのモデルとは？",
+     c:["モデルの重みが公開されているもの","無料で使えるサービス","広告付きのサービス","試用版"],a:0,
+     e:"自分の環境で動かせる一方、運用や安全対策は自分側の責任になります。"},
+
+    {t:"AI用語",
+     q:"ベンチマークとは？",
+     c:["性能を比べるための共通テスト","課金の明細","利用規約","保存形式"],a:0,
+     e:"参考にはなりますが、自分の用途での使い勝手とは別物です。"},
+
+    {t:"料金",
+     q:"API利用でよくある課金の単位は？",
+     c:["やり取りしたトークン量","接続した時間","保存したファイル数","起動した回数"],a:0,
+     e:"入力と出力の両方のトークンが対象になるのが一般的です。"},
+
+    {t:"料金",
+     q:"定額プランと従量課金の違いは？",
+     c:["定額は月額固定、従量は使った分だけ払う","同じもの","従量のほうが必ず安い","定額のほうが必ず安い"],a:0,
+     e:"使う量が読めないうちは、上限や利用状況の確認をこまめに。"},
+
+    {t:"料金",
+     q:"毎回とても長い資料を貼り付けて質問すると？",
+     c:["トークンが増えて費用も増える","費用は変わらない","無料になる","速度が上がる"],a:0,
+     e:"必要な部分だけ渡す、要約を渡す、といった工夫が効きます。"},
+
+    {t:"料金",
+     q:"費用を抑える工夫として正しいのは？",
+     c:["不要な文脈を削り、軽いモデルも使い分ける","毎回最上位モデルを使う","会話を長く続ける","同じ質問を繰り返す"],a:0,
+     e:"難所だけ高性能モデル、単純作業は軽いモデル、が基本の使い分けです。"},
+
+    {t:"料金",
+     q:"画像や動画の生成でよくある課金の考え方は？",
+     c:["枚数・秒数・解像度で変わる","常に定額","文字数で決まる","無料"],a:0,
+     e:"高解像度や長尺ほど高くなります。作る前に見積もりを確認します。"},
+
+    {t:"業務での使い方",
+     q:"AIに向いている仕事はどれ？",
+     c:["たたき台づくり・要約・言い換え","最終的な意思決定","責任を伴う判断","事実の保証"],a:0,
+     e:"ゼロから1を作る手間を減らす使い方が、いちばん効きます。"},
+
+    {t:"業務での使い方",
+     q:"AIに任せてはいけないのは？",
+     c:["最終的な判断と責任","下書き作成","表現の言い換え","要約"],a:0,
+     e:"決めるのは人です。判断材料づくりまでを任せます。"},
+
+    {t:"業務での使い方",
+     q:"議事録を要約させたときに必ず見るべきところは？",
+     c:["固有名詞・数字・決定事項","文字の大きさ","段落数","改行位置"],a:0,
+     e:"要約は落ちや取り違えが起きます。重要語は原文と突き合わせます。"},
+
+    {t:"業務での使い方",
+     q:"AIに書かせたメールを送る前にすべきことは？",
+     c:["内容と宛先を自分で確認する","そのまま送る","文字数を数える","AIに送信させる"],a:0,
+     e:"送信は取り消せません。事実誤認や失礼な表現がないか確認します。"},
+
+    {t:"業務での使い方",
+     q:"翻訳で気をつけることは？",
+     c:["専門用語や固有名詞が正しいか確認する","長さをそろえる","必ず直訳にする","改行を消す"],a:0,
+     e:"社内用語や商品名は独自訳になりがちです。用語集を渡すと安定します。"},
+
+    {t:"業務での使い方",
+     q:"社内でAI活用を広げるときに効くのは？",
+     c:["使い方のルールと具体的な事例の共有","高性能なPCの配布","毎日の利用義務化","禁止事項だけを配る"],a:0,
+     e:"やってよい範囲と、成功事例の両方があると動き出します。"},
+
+    {t:"業務での使い方",
+     q:"「AIに任せたから」で済まないのはなぜ？",
+     c:["成果物の責任は出した人にあるから","AIが遅いから","料金がかかるから","操作が難しいから"],a:0,
+     e:"確認と判断まで含めて自分の仕事、と考えると安全に使えます。"},
+
+    {t:"業務での使い方",
+     q:"AI活用の上達を早めるコツは？",
+     c:["小さく試して結果を見比べる","本を読むだけ","一度に大きく導入する","うまくいくまで待つ"],a:0,
+     e:"短いサイクルで試すほど、自分の仕事に合う型が早く見つかります。"}
+  ];
+
+  const PER_DAY = 3;   // 1日の出題数
+
+  /* =========================================================
+     2. 今日の3問を決める（日付から毎日ちがう組み合わせ）
+     ========================================================= */
+  function todayKey(){
+    const d = new Date();
+    return d.getFullYear() + "-" +
+           String(d.getMonth()+1).padStart(2,"0") + "-" +
+           String(d.getDate()).padStart(2,"0");
+  }
+  function hash(str){
+    let h = 2166136261;
+    for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h,16777619); }
+    return h >>> 0;
+  }
+  const DAY_KEY = todayKey();
+
+  // その日の3問（QUIZ 配列の番号で持つ。あとで見返すときにも使う）
+  // 全問を1周する日数（90問 ÷ 1日3問 = 30日）
+  const CYCLE_DAYS = Math.floor(QUIZ.length / PER_DAY);
+
+  function pickIdx(dayKey){
+    // 30日で全問がちょうど1回ずつ出るように配る。
+    // 周ごとに並びをシャッフルするので、2周目以降は出る順番が変わる。
+    const dayNo = Math.floor(Date.parse(dayKey) / 86400000);          // 通し日数
+    const cycle = Math.floor(dayNo / CYCLE_DAYS);                     // 何周目か
+    const pos   = ((dayNo % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;   // 周のなかの位置
+
+    const list = QUIZ.map(function(_, i){ return i; });
+    let s = hash("cycle-" + cycle);
+    for(let i = list.length - 1; i > 0; i--){                          // シード付きシャッフル
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      const j = s % (i + 1);
+      const t = list[i]; list[i] = list[j]; list[j] = t;
+    }
+    return list.slice(pos * PER_DAY, pos * PER_DAY + PER_DAY);
+  }
+  const TODAY_IDX = pickIdx(DAY_KEY);
+  const todays    = TODAY_IDX.map(function(i){ return QUIZ[i]; });
+
+  /* =========================================================
+     3. 進行状況の保存（同じ日は結果を再表示）
+     ========================================================= */
+  const SAVE_KEY = "genai-quiz-save";
+  const HIST_KEY = "genai-quiz-history";    // 過去の回答をためておく場所
+  const HIST_MAX = 60;                      // 直近60日ぶんを保存
+
+  function load(){
+    try{
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      if(s && s.day === DAY_KEY){
+        if(!s.picks) s.picks = [];
+        return s;
+      }
+    }catch(e){}
+    return { day: DAY_KEY, marks: [], picks: [], done: false };
+  }
+  function save(){
+    try{ localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }catch(e){}
+    saveHistory();
+  }
+
+  function loadHistory(){
+    try{ return JSON.parse(localStorage.getItem(HIST_KEY) || "[]") || []; }catch(e){ return []; }
+  }
+  // 今日の回答を履歴に反映する（同じ日は上書き）
+  function saveHistory(){
+    if(!state.marks.length) return;   // まだ1問も答えていない日は残さない
+    try{
+      let hist = loadHistory().filter(function(h){ return h.day !== DAY_KEY; });
+      hist.push({ day: DAY_KEY, idx: TODAY_IDX, marks: state.marks, picks: state.picks });
+      hist.sort(function(a,b){ return a.day < b.day ? 1 : -1; });   // 新しい日が先頭
+      if(hist.length > HIST_MAX) hist = hist.slice(0, HIST_MAX);
+      localStorage.setItem(HIST_KEY, JSON.stringify(hist));
+    }catch(e){}
+  }
+
+  let state = load();
+  let index = state.marks.length;   // いま何問目か
+  saveHistory();   // 見返し機能より前に答えた日ぶんも、起動時に履歴へ取り込む
+
+  /* =========================================================
+     4. 画面
+     ========================================================= */
+  const $ = id => document.getElementById(id);
+  $("dayLabel").textContent = DAY_KEY;
+
+  const progress = $("progress");
+  for(let i=0;i<PER_DAY;i++){
+    const pip = document.createElement("div");
+    pip.className = "pip";
+    progress.appendChild(pip);
+  }
+  function paintProgress(){
+    state.marks.forEach(function(ok,i){
+      progress.children[i].className = "pip " + (ok ? "ok" : "ng");
+    });
+  }
+
+  function render(){
+    const item = todays[index];
+    $("qno").textContent      = "第 " + (index+1) + " 問 / " + PER_DAY;
+    $("question").textContent = item.q;
+    $("explain").style.display = "none";
+    $("nextBtn").style.display = "none";
+
+    const box = $("choices");
+    box.innerHTML = "";
+    item.c.forEach(function(text,i){
+      const b = document.createElement("button");
+      b.className = "choice";
+      b.innerHTML = '<span class="mark">' + "ABCD"[i] + '</span><span></span>';
+      b.lastChild.textContent = text;
+      b.addEventListener("click", function(){ answer(i); });
+      box.appendChild(b);
+    });
+  }
+
+  function answer(picked){
+    const item = todays[index];
+    const ok = (picked === item.a);
+    const btns = $("choices").children;
+    for(let i=0;i<btns.length;i++){
+      btns[i].disabled = true;
+      if(i === item.a)          btns[i].classList.add("ok");
+      else if(i === picked)     btns[i].classList.add("ng");
+      else                      btns[i].classList.add("dim");
+    }
+    $("explain").innerHTML = (ok ? "正解！　" : "おしい！　正解は " + "ABCD"[item.a] + "　") + item.e;
+    $("explain").style.display = "block";
+
+    state.marks.push(ok);
+    state.picks.push(picked);   // 選んだ答えも残して、あとで見返せるようにする
+    save();
+    paintProgress();
+
+    $("nextBtn").textContent  = (index + 1 >= PER_DAY) ? "結果を見る" : "つぎへ";
+    $("nextBtn").style.display = "block";
+  }
+
+  $("nextBtn").addEventListener("click", function(){
+    index++;
+    if(index >= PER_DAY){
+      state.done = true; save();
+      showResult();
+    }else{
+      render();
+    }
+  });
+
+  /* =========================================================
+     5. 結果と絵文字グリッド（SNSシェア用）
+     ========================================================= */
+  function shareHead(){
+    const score = state.marks.filter(Boolean).length;
+    return "デイリー 生成AIクイズ " + DAY_KEY + "  " + score + "/" + PER_DAY;
+  }
+  function shareGrid(){
+    return state.marks.map(function(ok){ return ok ? "🟩" : "🟥"; }).join("");
+  }
+  // 出題テーマだけを載せる（問題文と答えは伏せる＝ネタバレなし）
+  function shareNote(){
+    const seen = [];
+    todays.forEach(function(item){ if(seen.indexOf(item.t) < 0) seen.push(item.t); });
+    return "今日のテーマ：" + seen.join(" / ") + "\n" +
+           "生成AIの基本、何問わかる？（答えは伏せています）";
+  }
+  function shareText(){ return shareHead() + "\n" + shareGrid() + "\n" + shareNote(); }
+  function showResult(){
+    const score = state.marks.filter(Boolean).length;
+    $("resultTitle").textContent = score === PER_DAY ? "全問正解！" : score >= 2 ? "いい調子！" : "また明日！";
+    $("scoreText").textContent   = score;
+    $("shareHead").textContent   = shareHead();
+    $("shareGrid").textContent   = shareGrid();
+    $("shareNote").textContent   = shareNote();
+    $("result").style.display = "flex";
+  }
+  $("closeBtn").addEventListener("click", function(){ $("result").style.display = "none"; });
+  $("copyBtn").addEventListener("click", function(){
+    const text = shareText();
+    function done(){
+      $("copyBtn").textContent = "コピーしました！";
+      setTimeout(function(){ $("copyBtn").textContent = "結果をコピー"; }, 1600);
+    }
+    function fallback(){
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); done(); }catch(e){ alert(text); }
+      document.body.removeChild(ta);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, fallback);
+    }else fallback();
+  });
+
+  /* =========================================================
+     6. ふりかえり（答えた内容をあとから見返す）
+        - その日に出た問題・自分が選んだ答え・正解・解説を一覧表示
+        - 直近60日ぶんを新しい順に表示する
+     ========================================================= */
+  function openReview(){
+    const body = $("reviewBody");
+    body.innerHTML = "";
+
+    const hist = loadHistory().filter(function(h){
+      return h && h.idx && h.marks && h.marks.length;
+    });
+
+    // 今日の分をやり直したいとき用（選んだ答えを残したい場合など）
+    if(state.marks.length){
+      const again = document.createElement("button");
+      again.className = "btn ghost";
+      again.style.cssText = "display:block;margin:0 auto 18px;font-size:12px;padding:9px 20px;";
+      again.textContent = "今日の3問をもう一度解く";
+      again.addEventListener("click", function(){
+        if(!confirm("今日の記録を消して、もう一度3問を解きますか？")) return;
+        try{
+          localStorage.removeItem(SAVE_KEY);
+          localStorage.setItem(HIST_KEY, JSON.stringify(
+            loadHistory().filter(function(h){ return h.day !== DAY_KEY; })));
+        }catch(e){}
+        location.reload();
+      });
+      body.appendChild(again);
+    }
+
+    if(!hist.length){
+      const empty = document.createElement("div");
+      empty.className = "rvEmpty";
+      empty.textContent = "まだ記録がありません。クイズに答えると、ここに問題と答えが残ります。";
+      body.appendChild(empty);
+    }else{
+      hist.forEach(function(h){
+        const score = h.marks.filter(Boolean).length;
+        const head = document.createElement("div");
+        head.className = "rvDay";
+        head.textContent = h.day + "　" + score + " / " + h.marks.length + " 問 正解";
+        body.appendChild(head);
+
+        h.marks.forEach(function(mark, i){
+          const item = QUIZ[h.idx[i]];
+          if(!item) return;
+          const pick = (h.picks && h.picks.length > i) ? h.picks[i] : null;  // 古い記録は選んだ答えが無い
+          const ok = mark;
+
+          const box = document.createElement("div");
+          box.className = "rvItem";
+
+          const tag = document.createElement("div");
+          tag.className = "rvTag";
+          tag.textContent = item.t;
+
+          const q = document.createElement("div");
+          q.className = "rvQ";
+          q.textContent = item.q;
+
+          const mine = document.createElement("div");
+          mine.className = "rvLine";
+          const mineLbl = document.createElement("span");
+          mineLbl.className = "lbl"; mineLbl.textContent = "あなたの答え";
+          const mineVal = document.createElement("span");
+          if(pick === null){
+            mineVal.className = ok ? "rvOk" : "rvNg";
+            mineVal.textContent = (ok ? "○ 正解しました" : "× まちがえました") + "（選んだ答えは記録なし）";
+          }else{
+            mineVal.className = ok ? "rvOk" : "rvNg";
+            mineVal.textContent = (ok ? "○ " : "× ") + item.c[pick];
+          }
+          mine.appendChild(mineLbl); mine.appendChild(mineVal);
+
+          const ans = document.createElement("div");
+          ans.className = "rvLine";
+          const ansLbl = document.createElement("span");
+          ansLbl.className = "lbl"; ansLbl.textContent = "正解";
+          const ansVal = document.createElement("span");
+          ansVal.className = "rvOk"; ansVal.textContent = item.c[item.a];
+          ans.appendChild(ansLbl); ans.appendChild(ansVal);
+
+          const ex = document.createElement("div");
+          ex.className = "rvE";
+          ex.innerHTML = item.e;   // 解説（このファイル内で用意した文章）
+
+          box.appendChild(tag); box.appendChild(q);
+          box.appendChild(mine); box.appendChild(ans); box.appendChild(ex);
+          body.appendChild(box);
+        });
+      });
+    }
+
+    $("review").style.display = "flex";
+    body.scrollTop = 0;
+  }
+  $("reviewBtn").addEventListener("click", openReview);
+  $("historyBtn").addEventListener("click", openReview);
+  $("reviewClose").addEventListener("click", function(){ $("review").style.display = "none"; });
+
+  /* =========================================================
+     7. タイトル → 開始
+     ========================================================= */
+  function startGame(){
+    stopIntro();
+    $("title").style.display = "none";
+    $("quiz").style.display  = "flex";
+    paintProgress();
+    if(state.done || index >= PER_DAY){ showResult(); }
+    else { render(); }
+  }
+  $("startBtn").addEventListener("click", startGame);
+
+  /* ---------------------------------------------------------
+     キーアート画像／イントロ動画（無ければ何もしない）
+     - assets/keyart.png があれば背景画像として表示
+     - assets/intro.mp4 があればタイトルで一度だけ再生
+     - どちらも無い／読めない場合は今の見た目のまま動く
+     --------------------------------------------------------- */
+  const keyart = $("keyart"), intro = $("intro"), skip = $("skipIntro");
+  function showKeyart(){ if(keyart.naturalWidth) keyart.style.display = "block"; }
+  keyart.addEventListener("load",  showKeyart);
+  keyart.addEventListener("error", function(){ keyart.style.display = "none"; });
+  if(keyart.complete) showKeyart();   // スクリプトより先に読み終わっていた場合
+
+  function stopIntro(){
+    try{ intro.pause(); }catch(e){}
+    intro.style.display = "none";
+    skip.style.display  = "none";
+  }
+  function playIntro(){
+    intro.style.display = "block";
+    skip.style.display  = "block";
+    intro.muted = true;                    // 音は必ず消したまま（自動再生の条件でもある）
+    const p = intro.play();
+    if(p && p.catch) p.catch(stopIntro);   // 自動再生がブロックされたら静かに諦める
+  }
+  intro.addEventListener("error", stopIntro);
+  intro.addEventListener("canplay", playIntro);
+  if(intro.readyState >= 3) playIntro();   // スクリプトより先に読み終わっていた場合
+  skip.addEventListener("click", stopIntro);
+  setTimeout(function(){ if(intro.readyState === 0) stopIntro(); }, 2500);  // 保険
+
+})();
+</script>
+</body>
+</html>
