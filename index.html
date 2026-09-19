@@ -969,11 +969,15 @@
     const PROJECT_ID = "rythm-game-mo";
     const API_KEY = "AIzaSyBBo4f_LqJ2lfdKu8Q11oeiiYq_O-15LSc";
     const ROOT = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents";
+    // 開発中のPlaywrightテストが本番カウンターを増やしていた（接続先はハードコードされた
+    // 本番プロジェクト）。ローカル配信時は書き込みだけ no-op にする。fetchCount は据え置き
+    const IS_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
 
     // 再生開始のたびに+1。失敗してもクイズ自体には一切影響させない（fire-and-forget）。
     // 既存ドキュメントへのincrementを先に試し、無ければ(初回プレイ)count:1での
     // 新規作成にフォールバックする（ルール側もcount==1での新規作成のみ許可）。
     function increment(gameId){
+      if(IS_LOCAL) return Promise.resolve();
       const commitUrl = ROOT + ":commit?key=" + API_KEY;
       const docPath = "projects/" + PROJECT_ID + "/databases/(default)/documents/playCounts/" + encodeURIComponent(gameId);
       const incrementBody = {
