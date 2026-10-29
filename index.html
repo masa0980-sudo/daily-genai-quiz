@@ -4,7 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>デイリー 生成AIクイズ</title>
+<script>if(/[?&]mini=1(&|$)/.test(location.search)) document.documentElement.classList.add("mini");</script>
 <style>
+  /* ミニ版(?mini=1。mini-medley の iframe から呼ばれる)では、クイズ画面だけを出す。毎日の3問ではなくランダムな3問 */
+  .mini #title,.mini #result,.mini #review,.mini #nextBtn{display:none !important;}
+  .mini #quiz{display:flex;}
+  #miniBar{display:none;height:6px;border-radius:4px;background:rgba(255,255,255,.14);margin:6px 0 2px;overflow:hidden;}
+  #miniBar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--ok),var(--accent2));}
+  .mini #miniBar{display:block;}
   :root{
     --bg0:#120b06; --bg1:#2a1508;
     --accent:#ff9a4d; --accent2:#ffd166;
@@ -168,6 +175,7 @@
       <div class="day" id="dayLabel"></div>
     </header>
     <div id="progress"></div>
+    <div id="miniBar"><i></i></div>
     <div id="qno"></div>
     <div id="question"></div>
     <div id="choices"></div>
@@ -204,6 +212,11 @@
 <script>
 (function(){
   "use strict";
+  /* ミニ版(mini-medley 用)。?mini=1&sec=<秒>&mute=<0|1>。仕様は mini-medley/CLAUDE.md。このゲームに音は無い */
+  const MINI_Q = new URLSearchParams(location.search);
+  const MINI = MINI_Q.get("mini") === "1";
+  const MINI_SEC = Math.max(5, parseFloat(MINI_Q.get("sec")) || 20);
+  const MINI_GAME_ID = "daily-genai-quiz";
 
   /* =========================================================
      1. 問題データ（生成AIの基本知識）
@@ -741,7 +754,7 @@
 
   let state = load();
   let index = state.marks.length;   // いま何問目か
-  saveHistory();   // 見返し機能より前に答えた日ぶんも、起動時に履歴へ取り込む
+  if(!MINI) saveHistory();   // 見返し機能より前に答えた日ぶんも、起動時に履歴へ取り込む
 
   /* =========================================================
      4. 画面
@@ -1024,6 +1037,81 @@
   })();
 
   /* =========================================================
+     7b. ミニ版(mini-medley から呼ばれる)
+         ランダムな3問。読み込み → 待機 → ハブの mini-go で開始 → 1問ごとに制限時間つき・答えたら0.9秒見せて自動で次へ
+         → 3問終わったら mini-result。点数: 正解で 20〜33.3点(速いほど高い)・不正解/時間切れは0・満点100。
+         履歴・保存・PlayCounts は書かない。
+     ========================================================= */
+  const MINI_N = 3, MINI_FB = 0.9;
+  const MINI_PER = (MINI_SEC - MINI_FB * MINI_N) / MINI_N;        // 1問の制限時間(秒)
+  const MINI_FULL = 100 / MINI_N, MINI_MIN = 20;                   // 1問あたりの満点 / 正解したときの最低点
+  let miniSet = [], miniIdx = 0, miniPts = 0, miniMarks = [], miniPicks = [], miniStarted = false, miniLocked = true, miniTimer = null, miniQStart = 0;
+
+  function miniBoot(){
+    $("dayLabel").textContent = "ミニ";
+    window.__quiz = { correct: function(){ return miniSet.length ? QUIZ[miniSet[miniIdx]].a : -1; }, locked: function(){ return miniLocked; } };
+    $("qno").textContent = ""; $("question").textContent = "";
+    window.addEventListener("message", function(e){ if(e.source === window.parent && e.data && e.data.type === "mini-go") miniGo(); });
+    window.parent.postMessage({ type: "mini-ready", game: MINI_GAME_ID }, "*");
+    if(window.parent === window) setTimeout(miniGo, 300);   // 単独で ?mini=1 を開いたとき(デバッグ用)は自動で始める
+  }
+  function miniGo(){
+    if(miniStarted) return; miniStarted = true;
+    const all = QUIZ.map(function(_, i){ return i; });
+    for(let i = all.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); const t = all[i]; all[i] = all[j]; all[j] = t; }
+    miniSet = all.slice(0, MINI_N);
+    miniShow(0);
+  }
+  function miniShow(k){
+    miniIdx = k;
+    const item = QUIZ[miniSet[k]];
+    $("qno").textContent = "第 " + (k + 1) + " 問 / " + MINI_N;
+    $("question").textContent = item.q;
+    $("explain").style.display = "none";
+    const box = $("choices"); box.innerHTML = "";
+    item.c.forEach(function(text, i){
+      const b = document.createElement("button");
+      b.className = "choice";
+      b.innerHTML = '<span class="mark">' + "ABCD"[i] + '</span><span></span>';
+      b.lastChild.textContent = text;
+      b.addEventListener("click", function(){ miniAnswer(i); });
+      box.appendChild(b);
+    });
+    miniLocked = false; miniQStart = performance.now();
+    const bar = $("miniBar").firstElementChild; bar.style.width = "100%";
+    clearInterval(miniTimer);
+    miniTimer = setInterval(function(){
+      const left = Math.max(0, MINI_PER - (performance.now() - miniQStart) / 1000);
+      bar.style.width = (left / MINI_PER * 100) + "%";
+      if(left <= 0) miniAnswer(-1);       // 時間切れ(不正解)
+    }, 50);
+  }
+  function miniAnswer(picked){
+    if(miniLocked) return; miniLocked = true;
+    clearInterval(miniTimer);
+    const item = QUIZ[miniSet[miniIdx]], ok = (picked === item.a);
+    const left = Math.max(0, MINI_PER - (performance.now() - miniQStart) / 1000);
+    miniPts += ok ? MINI_MIN + (MINI_FULL - MINI_MIN) * (left / MINI_PER) : 0;
+    miniMarks.push(ok); miniPicks.push(picked);
+    const btns = $("choices").children;
+    for(let i = 0; i < btns.length; i++){
+      btns[i].disabled = true;
+      if(i === item.a) btns[i].classList.add("ok");
+      else if(i === picked) btns[i].classList.add("ng");
+      else btns[i].classList.add("dim");
+    }
+    $("explain").textContent = ok ? "正解！" : (picked < 0 ? "時間切れ！　正解は " : "おしい！　正解は ") + (ok ? "" : "ABCD"[item.a]);
+    $("explain").style.display = "block";
+    progress.children[miniIdx].className = "pip " + (ok ? "ok" : "ng");
+    setTimeout(function(){ if(miniIdx + 1 < MINI_N) miniShow(miniIdx + 1); else miniEnd(); }, MINI_FB * 1000);
+  }
+  function miniEnd(){
+    const score = Math.max(0, Math.min(100, Math.round(miniPts)));
+    window.parent.postMessage({ type: "mini-result", game: MINI_GAME_ID, score: score,
+      detail: { correct: miniMarks.filter(Boolean).length, total: MINI_N, picks: miniPicks, questions: miniSet } }, "*");
+  }
+
+  /* =========================================================
      8. タイトル → 開始
      ========================================================= */
   function startGame(){
@@ -1044,6 +1132,7 @@
      - どちらも無い／読めない場合は今の見た目のまま動く
      --------------------------------------------------------- */
   const keyart = $("keyart"), intro = $("intro"), skip = $("skipIntro");
+  if(MINI){ intro.removeAttribute("src"); try{ intro.load(); }catch(e){} keyart.removeAttribute("src"); }
   function showKeyart(){ if(keyart.naturalWidth) keyart.style.display = "block"; }
   keyart.addEventListener("load",  showKeyart);
   keyart.addEventListener("error", function(){ keyart.style.display = "none"; });
@@ -1067,8 +1156,10 @@
   skip.addEventListener("click", stopIntro);
   setTimeout(function(){ if(intro.readyState === 0) stopIntro(); }, 2500);  // 保険
 
+  if(MINI) miniBoot();
+
   // 累計プレイ回数の表示。取れなければ空欄のまま静かに諦める(体感速度には影響させない)。
-  PlayCounts.fetchCount("daily-genai-quiz").then(function(count){
+  if(!MINI) PlayCounts.fetchCount("daily-genai-quiz").then(function(count){
     if(count != null) $("playCountLabel").textContent = "これまでに " + count + " 回プレイされています";
   });
 
